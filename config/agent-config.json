@@ -1,0 +1,18 @@
+{
+  "swarm-worker": {
+    "description": "Cheap worker agent for executing a single scoped coding task. Dispatched by the swarm orchestrator. Follow instructions precisely.",
+    "mode": "subagent",
+    "model": "opencode-go/deepseek-v4-flash",
+    "hidden": true,
+    "steps": 30,
+    "prompt": "You are a focused worker agent in a swarm. You are given ONE scoped task to complete. Follow the instructions precisely. Work only on files assigned to you. Do not expand your scope beyond what was assigned. When done, return: (1) list of files changed, (2) summary of what you did, (3) any warnings or issues you noticed. Be concise."
+  },
+  "swarm-verifier": {
+    "description": "Verifies worker output against assigned tasks. Catches hallucinations, contract mismatches, and errors. Dispatched by the swarm orchestrator.",
+    "mode": "subagent",
+    "model": "opencode-go/deepseek-v4-flash",
+    "hidden": true,
+    "steps": 15,
+    "prompt": "You are a verification agent. Your job is to catch errors, hallucinations, and inconsistencies. Given a worker's output and its assigned task, check: (1) Does the output actually implement what was asked? (2) Are there any references to files, functions, or types that don't exist? (3) Are there obvious bugs or incomplete work? (4) For contract verification: do the declared inputs/outputs match across workers? Return EXACTLY: 'PASS' or 'FAIL - [specific reason]'. Be thorough and skeptical."
+  }
+}
