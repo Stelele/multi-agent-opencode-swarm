@@ -1,6 +1,6 @@
 # Multi-Agent OpenCode Swarm
 
-A skill and agent configuration for OpenCode that implements cost-efficient multi-agent orchestration. The expensive coordinator model (v4-pro) only does planning and verification, while a swarm of cheap worker agents (v4-flash) does the bulk coding.
+A skill suite for OpenCode that implements cost-efficient multi-agent orchestration. The expensive coordinator model (v4-pro) only does planning and verification, while a swarm of cheap worker agents (v4-flash) does the bulk coding.
 
 Inspired by: Claude Fable 5 Bossed 20 Cheap AI Agents (Nate B Jones)
 
@@ -12,44 +12,57 @@ Inspired by: Claude Fable 5 Bossed 20 Cheap AI Agents (Nate B Jones)
   → Proposes spawn architecture (N workers, their scopes, contracts)
   → You refine and approve
   → Workers run in parallel (v4-flash)
-  → Verifiers check each worker's output (v4-flash)
-  → Contract cross-checker validates alignment
+  → Per-worker verifiers check each output (v4-flash)
+  → Contract cross-checker validates alignment (v4-flash)
   → Failed workers retry with feedback (escalation ladder)
   → Builder aggregates verified results
 ```
 
 **Cost model:** 90%+ of tokens burn on the cheapest available model. The expensive model only orchestrates.
 
+## File Structure
+
+```
+skills/
+├── using-swarm/
+│   └── SKILL.md              # Meta-skill — rules of engagement, when swarm MUST be used
+└── swarm/
+    ├── SKILL.md              # Orchestration workflow (7 phases, DOT flowcharts)
+    ├── worker-prompt.md      # Template for dispatching swarm-workers
+    └── verifier-prompt.md    # Template for dispatching swarm-verifiers (both modes)
+
+config/
+└── agent-config.json         # Agent definitions to add to opencode.json
+```
+
 ## Installation
 
-### 1. Add the Skill
-
-Clone or copy the `skills/swarm/` directory to your OpenCode skills path:
+### 1. Install the Skills
 
 ```bash
 # Option A: Personal (all projects)
 cp -r skills/swarm ~/.config/opencode/skills/swarm
+cp -r skills/using-swarm ~/.config/opencode/skills/using-swarm
 
 # Option B: Project-specific
 cp -r skills/swarm .opencode/skills/swarm
+cp -r skills/using-swarm .opencode/skills/using-swarm
 ```
 
 ### 2. Add the Agent Definitions
 
-Add the `swarm-worker` and `swarm-verifier` agents to your `opencode.json`:
+Add the `swarm-worker` and `swarm-verifier` agents to your `opencode.json` inside the `"agent"` object:
 
 ```json
 {
   "agent": {
-    "general": { "model": "opencode-go/deepseek-v4-flash" },
-    "explore": { "model": "opencode-go/deepseek-v4-flash" },
     "swarm-worker": {
       "description": "Cheap worker agent for executing a single scoped coding task.",
       "mode": "subagent",
       "model": "opencode-go/deepseek-v4-flash",
       "hidden": true,
       "steps": 30,
-      "prompt": "You are a focused worker agent in a swarm. You are given ONE scoped task to complete. Follow the instructions precisely. Work only on files assigned to you. Do not expand your scope beyond what was assigned. When done, return: (1) list of files changed, (2) summary of what you did, (3) any warnings or issues you noticed. Be concise."
+      "prompt": "You are a focused worker agent in a swarm..."
     },
     "swarm-verifier": {
       "description": "Verifies worker output against assigned tasks.",
@@ -57,17 +70,17 @@ Add the `swarm-worker` and `swarm-verifier` agents to your `opencode.json`:
       "model": "opencode-go/deepseek-v4-flash",
       "hidden": true,
       "steps": 15,
-      "prompt": "You are a verification agent. Your job is to catch errors, hallucinations, and inconsistencies. Given a worker's output and its assigned task, check: (1) Does the output actually implement what was asked? (2) Are there any references to files, functions, or types that don't exist? (3) Are there obvious bugs or incomplete work? (4) For contract verification: do the declared inputs/outputs match across workers? Return EXACTLY: 'PASS' or 'FAIL - [specific reason]'. Be thorough and skeptical."
+      "prompt": "You are a verification agent..."
     }
   }
 }
 ```
 
-A full example agent config is in `config/agent-config.json`. Add these entries inside your existing `"agent"` object — don't replace your existing agents.
+The full config is in `config/agent-config.json`. **Add these alongside your existing agents** — don't replace them.
 
 ### 3. Restart OpenCode
 
-The skill and agents are loaded at startup.
+The skills and agents load at startup.
 
 ## Usage
 
@@ -118,15 +131,19 @@ Proceed? Adjust by saying which workers to add/remove/modify.
 
 You can merge workers, split them, change scopes, add instructions — iterate until the plan looks right.
 
-## Prerequisites
+## Architecture
 
-- **OpenCode** with the OpenCode Go subscription
-- **AGENTS.md files** recommended — the planner reads these to scope workers correctly
-- The `swarm-worker` and `swarm-verifier` agents configured in your `opencode.json`
+### The 7-Phase Workflow
 
-## Failure Handling
+1. **Context Extraction** — Reads AGENTS.md, file tree, git diff
+2. **Spawn Proposal** — Defines workers, scopes, and contracts
+3. **Refinement** — User adjusts the proposal until satisfied
+4. **Dispatch** — All workers launched in parallel (v4-flash)
+5. **Verification** — Per-worker checks + contract cross-check (v4-flash)
+6. **Failure Handling** — 4-level escalation ladder for retries
+7. **Aggregation** — Unified summary of all verified results
 
-The swarm has a 4-level escalation ladder to handle failures without burning expensive tokens:
+### The Escalation Ladder
 
 | Level | Action | Model |
 |-------|--------|-------|
@@ -137,15 +154,42 @@ The swarm has a 4-level escalation ladder to handle failures without burning exp
 
 The expensive model is always the last resort.
 
-## Files
+## Skills Reference
 
-```
-skills/swarm/
-  SKILL.md              # The swarm orchestration skill
+| Skill | When It Loads | What It Does |
+|-------|---------------|--------------|
+| `using-swarm` | Session start (if auto-injected) or when swarm concepts are invoked | Establishes the 1% rule, cost model, red flags, integration with other skills |
+| `swarm` | User says "swarm:", "/swarm", "use swarm", "spawn agents", or auto-trigger fires | Executes the 7-phase orchestration workflow |
 
-config/
-  agent-config.json     # Agent definitions for opencode.json
-```
+## Prompt Templates
+
+| File | Purpose |
+|------|---------|
+| `worker-prompt.md` | Template for constructing worker dispatch prompts with SUBAGENT-STOP, context isolation, and output contracts |
+| `verifier-prompt.md` | Template for both per-worker verification (Mode 1) and contract cross-check (Mode 2) |
+
+## Design Principles
+
+**Inspired by superpowers:**
+- Meta-skill (`using-swarm`) establishes rules of engagement before any work begins
+- DOT/Graphviz flowcharts as executable specifications for workflows
+- SUBAGENT-STOP blocks prevent recursive skill loading in subagents
+- Rationalization tables counter common excuses for skipping the workflow
+- Red Flag tables define hard stops for dangerous shortcuts
+- Cross-skill integration declares how swarm works with brainstorming, TDD, debugging
+
+**Cost-first design:**
+- Expensive model NEVER does bulk coding
+- Workers are always the cheapest model
+- Verification is cheap and parallel
+- Context is trimmed to minimum needed
+- Contracts prevent rework across workers
+
+## Prerequisites
+
+- **OpenCode** with the OpenCode Go subscription
+- **AGENTS.md files** recommended — the planner reads these to scope workers correctly
+- The `swarm-worker` and `swarm-verifier` agents configured in your `opencode.json`
 
 ## Tips
 
@@ -154,3 +198,4 @@ config/
 - **Start with 2-3 workers.** More workers = more coordination overhead. Find the sweet spot.
 - **Per-worker verifiers are cheap.** They only see one worker's output, not the whole project.
 - **The verifier catches lies.** Cheap models sometimes hallucinate. The verifier's job is to catch that.
+- **Escalate reluctantly.** Every escalation to v4-pro costs money. Exhaust v4-flash options first.
